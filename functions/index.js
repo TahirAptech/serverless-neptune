@@ -7,7 +7,7 @@ const validator = validateJson.Validator;
 
 module.exports.handler = async (event) => {
   try {
-    // console.time("Lambda Process time")
+    console.time("Lambda Process time")
     if (conn == null) {
       console.log("initializing neptune connection")
       conn = createRemoteConnection();
@@ -20,7 +20,7 @@ module.exports.handler = async (event) => {
       return buildResponse({ message: "invalid payload" }, 400);
     }
     
-    // const { company, cre, hash } = err;
+    const { company, cre, hash } = err;
     
     const firstQ = `g.addV('Wallet').property('id', '${hash}')`;
     await runNeptuneQuery(conn, firstQ);
@@ -136,10 +136,7 @@ const createRemoteConnection = () => {
 };
 
 async function doQuery(query) {
-  // console.log("gremlin query", { query });
   const result = await conn.submit(query);
-  // console.log("gremlim results", { result })
-
   return result;
 }
 
@@ -169,24 +166,19 @@ const validateQueryStringParamters = (requestBody) => {
             type: 'string'
           },
           website: {
-            type: 'string',
-            // format: 'uri'
+            type: 'string'
           },
           twitter: {
-            type: 'string',
-            // format: 'uri'
+            type: 'string'
           },
           instagram: {
-            type: 'string',
-            // format: 'uri'
+            type: 'string'
           },
           facebook: {
-            type: 'string',
-            // format: 'uri'
+            type: 'string'
           },
           linkedin: {
-            type: 'string',
-            // format: 'uri'
+            type: 'string'
           }
         }
       },
