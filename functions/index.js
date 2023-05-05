@@ -20,7 +20,7 @@ module.exports.handler = async (event) => {
       return buildResponse({ message: "invalid payload" }, 400);
     }
     
-    const { company, cre, hash } = err;
+    const { company, cre, hash } = obj;
     
     const firstQ = `g.addV('Wallet').property('id', '${hash}')`;
     await runNeptuneQuery(conn, firstQ);
