@@ -1,0 +1,139 @@
+service: lillup-neptune
+
+
+provider:
+  name: aws
+  stage: ${opt:stage, 'dev'}
+  region: ${opt:region, 'eu-west-2'}
+  profile: lillup
+
+
+functions:
+  stopNeptune:
+    role: neptuneStopRole
+    runtime: python3.7
+    handler: src/functions/stopNeptune.lambda_handler
+    events:
+      - schedule: cron(23 00 * * ? *)
+    environment:
+      KEY: "Name"
+      VALUE: ${self:custom.prefix}-db-cluster
+      REGION: ${self:provider.region}
+
+resources:
+  Resources:
+    NeptuneDBCluster:
+      Type: "AWS::Neptune::DBCluster"
+      Properties:
+        DBSubnetGroupName:
+          Ref: NeptuneDBSubnetGroup
+        VpcSecurityGroupIds:
+          - ${cf:${self:custom.vpcStackName}.VpcDefaultSecurityGroup}
+          - Fn::GetAtt:
+            - "NeptuneServiceSecurityGroup"
+            - "GroupId"
+        Port: 8182
+        IamAuthEnabled: false
+        Tags:
+          - Key: Name
+            Value: ${self:custom.prefix}-db-cluster
+      DependsOn:
+        - NeptuneDBSubnetGroup
+
+    NeptuneDBInstance:
+      Type: "AWS::Neptune::DBInstance"
+      Properties:
+        DBClusterIdentifier:
+          Ref: "NeptuneDBCluster"
+        DBInstanceClass: "db.t3.medium"
+        Tags:
+          - Key: Name
+            Value: ${self:custom.prefix}-db-instance
+      DependsOn:
+        - "NeptuneDBCluster"
+
+    NeptuneDBSubnetGroup: 
+      Type: "AWS::Neptune::DBSubnetGroup"
+      Properties:
+        DBSubnetGroupDescription: "Neptune DB subnet group"
+        SubnetIds: 
+          - ${cf:${self:custom.vpcStackName}.Subnet3}
+          - ${cf:${self:custom.vpcStackName}.Subnet4}
+        Tags:
+          - Key: Name
+            Value: ${self:custom.prefix}-subnet-group
+
+    NeptuneServiceSecurityGroup:
+      Type: AWS::EC2::SecurityGroup
+      Properties: 
+        GroupName: ${self:custom.prefix}-sg
+        GroupDescription: Allow https to client host
+        VpcId: ${cf:${self:custom.vpcStackName}.Vpc}
+        SecurityGroupIngress:
+          - IpProtocol: tcp
+            FromPort: '8182'
+            ToPort: '8182'
+            CidrIp: 10.0.0.0/16
+        Tags:
+          - Key: Name
+            Value: ${self:custom.prefix}-sg
+
+    neptuneStopRole:
+      Type: 'AWS::IAM::Role'
+      Properties:
+        RoleName: ${self:custom.prefix}-neptuneStopRole
+        AssumeRolePolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+            - Effect: 'Allow'
+              Principal:
+                Service:
+                  - 'lambda.amazonaws.com'
+              Action:
+                - 'sts:AssumeRole'
+        ManagedPolicyArns:
+          - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        Policies:
+          - PolicyName: ${self:custom.prefix}-neptuneStopRole-policy
+            PolicyDocument:
+              Version: '2012-10-17'
+              Statement:
+                - Effect: 'Allow'
+                  Action:
+                    - 'rds:DescribeDBClusterParameters'
+                    - 'rds:StartDBCluster'
+                    - 'rds:StopDBCluster'
+                    - 'rds:DescribeDBEngineVersions'
+                    - 'rds:DescribeGlobalClusters'
+                    - 'rds:DescribePendingMaintenanceActions'
+                    - 'rds:DescribeDBLogFiles'
+                    - 'rds:StopDBInstance'
+                    - 'rds:StartDBInstance'
+                    - 'rds:DescribeReservedDBInstancesOfferings'
+                    - 'rds:DescribeReservedDBInstances'
+                    - 'rds:ListTagsForResource'
+                    - 'rds:DescribeValidDBInstanceModifications'
+                    - 'rds:DescribeDBInstances'
+                    - 'rds:DescribeSourceRegions'
+                    - 'rds:DescribeDBClusterEndpoints'
+                    - 'rds:DescribeDBClusters'
+                    - 'rds:DescribeDBClusterParameterGroups'
+                    - 'rds:DescribeOptionGroups'
+                  Resource: '*'
+
+  Outputs:
+    SecurityGroup:
+      Description: Security group for the lambda service
+      Value:
+        Ref: NeptuneServiceSecurityGroup   
+
+    DBClusterEndpoint:
+      Description: Master Endpoint for Neptune Cluster
+      Value:
+        Fn::GetAtt:
+          - "NeptuneDBCluster"
+          - "Endpoint"
+
+custom:
+  prefix: ${self:service}-${self:provider.stage}
+  vpcStackName: lillup-vpc-${self:provider.stage}
