@@ -6,10 +6,6 @@ const { runNeptuneQuery } = require("../util/neptune");
 module.exports.credential = async (obj) => {
     try {
         console.time("Lambda Process time")
-        if (conn == null) {
-            console.log("initializing neptune connection")
-            conn = createRemoteConnection();
-        }
 
         const err = validateQueryStringParamters(obj);
         console.log("> Validate Error", err);
@@ -17,25 +13,28 @@ module.exports.credential = async (obj) => {
             return buildResponse({ message: "invalid payload" }, 400);
         }
 
-        const { cre, hash } = obj;
+        const { credential, hash } = obj;
 
-        const firstQ = `g.addV('Wallet').property('id', '${hash}')`;
-        await runNeptuneQuery(conn, firstQ);
+        const firstQ = `g.V().has('Wallet', 'id', '${hash}').fold().coalesce(unfold(), addV('Wallet').property('id', '${hash}'))`;
+        await runNeptuneQuery(firstQ);
 
-        const queryCredential = `g.addV('Credential')` +
-            `.property('id', '${cre.id}')` +
-            `.property('deadline', '${cre.deadline}')` +
-            `.property('online', ${cre.online})` +
-            `.property('onsite', ${cre.onsite})` +
-            `.property('workExperience', ${cre.workExperience})` +
-            `.property('assessment', ${cre.assessment})` +
-            `.property('qualificationsFrameworkLevel', ${cre.qualificationsFrameworkLevel})` +
-            `.property('qualificationsFrameworkText', '${cre.qualificationsFrameworkText}')` +
-            `.property('achievementAwardedOn', '${cre.achievementAwardedOn}')` +
-            `.as('credential')` +
+        const queryCredential = `g.V().has('Credential', 'id', 'credential#${credential.companyId}').fold()` +
+            `.coalesce(unfold(),` +
+            `addV('Credential')` +
+            `.property('id', 'credential#${credential.companyId}')` +
+            `.property('deadline', '${credential.deadline}')` +
+            `.property('online', ${credential.online})` +
+            `.property('onsite', ${credential.onsite})` +
+            `.property('workExperience', ${credential.workExperience})` +
+            `.property('assessment', ${credential.assessment})` +
+            `.property('qualificationsFrameworkLevel', ${credential.qualificationsFrameworkLevel})` +
+            `.property('qualificationsFrameworkText', '${credential.qualificationsFrameworkText}')` +
+            `.property('achievementAwardedOn', '${credential.achievementAwardedOn}')` +
+            `).as('credential')` +
             `.V().has('Wallet', 'id', '${hash}')` +
-            `.addE('OWNS').to('credential')`;
-        await runNeptuneQuery(conn, queryCredential);
+            `.coalesce(inE('OWNS').where(outV().as('credential')), addE('OWNS').to('credential'))`;
+
+        await runNeptuneQuery(queryCredential);
 
         const finalQuery = `g.V().has('Wallet', 'id', '${hash}')` +
             `.project('wallet', 'companies', 'credentials')` +
@@ -44,7 +43,7 @@ module.exports.credential = async (obj) => {
             `.by(out('OWNS').hasLabel('Credential').valueMap())`;
         console.log("Gremlin Query:", finalQuery);
 
-        const finalQueryResult = await runNeptuneQuery(conn, finalQuery);
+        const finalQueryResult = await runNeptuneQuery(finalQuery);
         console.log("Gremlin Result:", finalQueryResult);
 
         console.timeEnd("Lambda Process time")
@@ -63,12 +62,15 @@ const validateQueryStringParamters = (requestBody) => {
         type: 'object',
         required: ['hash'],
         properties: {
-            hash: {
+            type: {
                 type: 'string'
             },
-            cre: {
+            credential: {
                 type: 'object',
                 properties: {
+                    companyId: {
+                        type: 'string'
+                    },
                     deadline: {
                         type: 'string',
                         format: 'date'
@@ -96,8 +98,12 @@ const validateQueryStringParamters = (requestBody) => {
                         format: 'date'
                     }
                 }
+            },
+            hash: {
+                type: 'string'
             }
-        }
+        },
+        additionalProperties: false
     };
 
     return v.validate(requestBody, schema);

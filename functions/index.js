@@ -7,11 +7,9 @@ module.exports.handler = async (event) => {
 
   switch (req.type) {
     case "company":
-      await company(req);
-      break;
+      return await company(req);
     case "credential":
-      await credential(req);
-      break;
+      return await credential(req);
     default:
       return buildResponse({ message: "invalid payload" }, 400);
   }

@@ -1,4 +1,4 @@
-export function buildResponse(body, statusCode = 200) {
+module.exports.buildResponse = (body, statusCode = 200) => {
     return {
         statusCode,
         headers: {

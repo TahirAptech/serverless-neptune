@@ -6,10 +6,6 @@ const { runNeptuneQuery } = require("../util/neptune");
 module.exports.company = async (obj) => {
     try {
         console.time("Lambda Process time")
-        if (conn == null) {
-            console.log("initializing neptune connection")
-            conn = createRemoteConnection();
-        }
 
         const err = validateQueryStringParamters(obj);
         console.log("> Validate Error", err);
@@ -19,12 +15,16 @@ module.exports.company = async (obj) => {
 
         const { company, hash } = obj;
 
-        const firstQ = `g.addV('Wallet').property('id', '${hash}')`;
-        await runNeptuneQuery(conn, firstQ);
+        // const firstQ = `g.addV('Wallet').property('id', '${hash}')`;
+        const firstQ = `g.V().has('Wallet', 'id', '${hash}').fold().coalesce(unfold(), addV('Wallet').property('id', '${hash}'))`;
 
-        const queryCompany = "g.addV('Company')" +
+        await runNeptuneQuery(firstQ);
+
+        const queryCompany = `g.V().has('Company', 'id', '${company.id}').fold()` +
+            `.coalesce(unfold(),` +
+            `addV('Company')` +
             `.property('id', '${company.id}')` +
-            `.property('type', '${company.company}')` +
+            `.property('type', ${company.company})` +
             `.property('email', '${company.email}')` +
             `.property('name', '${company.name}')` +
             `.property('address', '${company.address}')` +
@@ -33,10 +33,11 @@ module.exports.company = async (obj) => {
             `.property('instagram', '${company.instagram}')` +
             `.property('facebook', '${company.facebook}')` +
             `.property('linkedin', '${company.linkedin}')` +
-            `.as('company')` +
+            `).as('company')` +
             `.V().has('Wallet', 'id', '${hash}')` +
-            `.addE('OWNS').to('company')`;
-        await runNeptuneQuery(conn, queryCompany);
+            `.coalesce(outE('OWNS').where(inV().as('company')),` +
+            ` addE('OWNS').to('company'))`;
+        await runNeptuneQuery(queryCompany);
 
         const finalQuery = `g.V().has('Wallet', 'id', '${hash}')` +
             `.project('wallet', 'companies', 'credentials')` +
@@ -45,7 +46,7 @@ module.exports.company = async (obj) => {
             `.by(out('OWNS').hasLabel('Credential').valueMap())`;
         console.log("Gremlin Query:", finalQuery);
 
-        const finalQueryResult = await runNeptuneQuery(conn, finalQuery);
+        const finalQueryResult = await runNeptuneQuery(finalQuery);
         console.log("Gremlin Result:", finalQueryResult);
 
         console.timeEnd("Lambda Process time")
@@ -64,12 +65,15 @@ const validateQueryStringParamters = (requestBody) => {
         type: 'object',
         required: ['hash'],
         properties: {
-            hash: {
+            type: {
                 type: 'string'
             },
             company: {
                 type: 'object',
                 properties: {
+                    id: {
+                        type: 'string'
+                    },
                     company: {
                         type: 'number'
                     },
@@ -99,8 +103,12 @@ const validateQueryStringParamters = (requestBody) => {
                         type: 'string'
                     }
                 }
+            },
+            hash: {
+                type: 'string'
             }
-        }
+        },
+        additionalProperties: false
     };
 
     return v.validate(requestBody, schema);
