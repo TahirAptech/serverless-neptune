@@ -21,7 +21,10 @@ functions:
           path: createProfile
           method: post
           cors: true
-         
+          authorizer:
+            name: CognitoAuthorizer
+            type: COGNITO_USER_POOLS
+            arn: arn:aws:cognito-idp:us-east-1:160806666268:userpool/us-east-1_wpLB3VsQ7
     vpc:
       securityGroupIds:
         - ${cf:${self:custom.vpcStackName}.VpcDefaultSecurityGroup}

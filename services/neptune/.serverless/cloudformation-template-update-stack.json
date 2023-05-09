@@ -1,0 +1,339 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "The AWS CloudFormation template for this Serverless application",
+  "Resources": {
+    "ServerlessDeploymentBucket": {
+      "Type": "AWS::S3::Bucket",
+      "Properties": {
+        "BucketEncryption": {
+          "ServerSideEncryptionConfiguration": [
+            {
+              "ServerSideEncryptionByDefault": {
+                "SSEAlgorithm": "AES256"
+              }
+            }
+          ]
+        }
+      }
+    },
+    "ServerlessDeploymentBucketPolicy": {
+      "Type": "AWS::S3::BucketPolicy",
+      "Properties": {
+        "Bucket": {
+          "Ref": "ServerlessDeploymentBucket"
+        },
+        "PolicyDocument": {
+          "Statement": [
+            {
+              "Action": "s3:*",
+              "Effect": "Deny",
+              "Principal": "*",
+              "Resource": [
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      "arn:",
+                      {
+                        "Ref": "AWS::Partition"
+                      },
+                      ":s3:::",
+                      {
+                        "Ref": "ServerlessDeploymentBucket"
+                      },
+                      "/*"
+                    ]
+                  ]
+                },
+                {
+                  "Fn::Join": [
+                    "",
+                    [
+                      "arn:",
+                      {
+                        "Ref": "AWS::Partition"
+                      },
+                      ":s3:::",
+                      {
+                        "Ref": "ServerlessDeploymentBucket"
+                      }
+                    ]
+                  ]
+                }
+              ],
+              "Condition": {
+                "Bool": {
+                  "aws:SecureTransport": false
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "StopNeptuneLogGroup": {
+      "Type": "AWS::Logs::LogGroup",
+      "Properties": {
+        "LogGroupName": "/aws/lambda/lillup-neptune-dev-stopNeptune"
+      }
+    },
+    "StopNeptuneLambdaFunction": {
+      "Type": "AWS::Lambda::Function",
+      "Properties": {
+        "Code": {
+          "S3Bucket": {
+            "Ref": "ServerlessDeploymentBucket"
+          },
+          "S3Key": "serverless/lillup-neptune/dev/1683106214140-2023-05-03T09:30:14.140Z/lillup-neptune.zip"
+        },
+        "Handler": "src/functions/stopNeptune.lambda_handler",
+        "Runtime": "python3.7",
+        "FunctionName": "lillup-neptune-dev-stopNeptune",
+        "MemorySize": 1024,
+        "Timeout": 6,
+        "Environment": {
+          "Variables": {
+            "KEY": "Name",
+            "VALUE": "lillup-neptune-dev-db-cluster",
+            "REGION": "eu-west-2"
+          }
+        },
+        "Role": {
+          "Fn::GetAtt": [
+            "neptuneStopRole",
+            "Arn"
+          ]
+        }
+      },
+      "DependsOn": [
+        "StopNeptuneLogGroup",
+        "neptuneStopRole"
+      ]
+    },
+    "StopNeptuneLambdaVersion8dBhSdXDnHFU1MQxRdoFy1AOT7rusTgBbOpzirJJuQ": {
+      "Type": "AWS::Lambda::Version",
+      "DeletionPolicy": "Retain",
+      "Properties": {
+        "FunctionName": {
+          "Ref": "StopNeptuneLambdaFunction"
+        },
+        "CodeSha256": "jXLrXJn8BwrANmamv3pwWj2Ch/o4tmGf0G7GNW4iB5U="
+      }
+    },
+    "StopNeptuneEventsRuleSchedule1": {
+      "Type": "AWS::Events::Rule",
+      "Properties": {
+        "ScheduleExpression": "cron(23 00 * * ? *)",
+        "State": "ENABLED",
+        "Targets": [
+          {
+            "Arn": {
+              "Fn::GetAtt": [
+                "StopNeptuneLambdaFunction",
+                "Arn"
+              ]
+            },
+            "Id": "stopNeptuneSchedule"
+          }
+        ]
+      }
+    },
+    "StopNeptuneLambdaPermissionEventsRuleSchedule1": {
+      "Type": "AWS::Lambda::Permission",
+      "Properties": {
+        "FunctionName": {
+          "Fn::GetAtt": [
+            "StopNeptuneLambdaFunction",
+            "Arn"
+          ]
+        },
+        "Action": "lambda:InvokeFunction",
+        "Principal": "events.amazonaws.com",
+        "SourceArn": {
+          "Fn::GetAtt": [
+            "StopNeptuneEventsRuleSchedule1",
+            "Arn"
+          ]
+        }
+      }
+    },
+    "NeptuneDBCluster": {
+      "Type": "AWS::Neptune::DBCluster",
+      "Properties": {
+        "DBSubnetGroupName": {
+          "Ref": "NeptuneDBSubnetGroup"
+        },
+        "VpcSecurityGroupIds": [
+          "sg-0db877049419e6e31",
+          {
+            "Fn::GetAtt": [
+              "NeptuneServiceSecurityGroup",
+              "GroupId"
+            ]
+          }
+        ],
+        "Port": 8182,
+        "IamAuthEnabled": false,
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "lillup-neptune-dev-db-cluster"
+          }
+        ]
+      },
+      "DependsOn": [
+        "NeptuneDBSubnetGroup"
+      ]
+    },
+    "NeptuneDBInstance": {
+      "Type": "AWS::Neptune::DBInstance",
+      "Properties": {
+        "DBClusterIdentifier": {
+          "Ref": "NeptuneDBCluster"
+        },
+        "DBInstanceClass": "db.t3.medium",
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "lillup-neptune-dev-db-instance"
+          }
+        ]
+      },
+      "DependsOn": [
+        "NeptuneDBCluster"
+      ]
+    },
+    "NeptuneDBSubnetGroup": {
+      "Type": "AWS::Neptune::DBSubnetGroup",
+      "Properties": {
+        "DBSubnetGroupDescription": "Neptune DB subnet group",
+        "SubnetIds": [
+          "subnet-0bc9466452604b1e6",
+          "subnet-0e802788fdf51987e"
+        ],
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "lillup-neptune-dev-subnet-group"
+          }
+        ]
+      }
+    },
+    "NeptuneServiceSecurityGroup": {
+      "Type": "AWS::EC2::SecurityGroup",
+      "Properties": {
+        "GroupName": "lillup-neptune-dev-sg",
+        "GroupDescription": "Allow https to client host",
+        "VpcId": "vpc-0c3d6cdc664d13bea",
+        "SecurityGroupIngress": [
+          {
+            "IpProtocol": "tcp",
+            "FromPort": "8182",
+            "ToPort": "8182",
+            "CidrIp": "10.0.0.0/16"
+          }
+        ],
+        "Tags": [
+          {
+            "Key": "Name",
+            "Value": "lillup-neptune-dev-sg"
+          }
+        ]
+      }
+    },
+    "neptuneStopRole": {
+      "Type": "AWS::IAM::Role",
+      "Properties": {
+        "RoleName": "lillup-neptune-dev-neptuneStopRole",
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": [
+                  "lambda.amazonaws.com"
+                ]
+              },
+              "Action": [
+                "sts:AssumeRole"
+              ]
+            }
+          ]
+        },
+        "ManagedPolicyArns": [
+          "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+        ],
+        "Policies": [
+          {
+            "PolicyName": "lillup-neptune-dev-neptuneStopRole-policy",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "rds:DescribeDBClusterParameters",
+                    "rds:StartDBCluster",
+                    "rds:StopDBCluster",
+                    "rds:DescribeDBEngineVersions",
+                    "rds:DescribeGlobalClusters",
+                    "rds:DescribePendingMaintenanceActions",
+                    "rds:DescribeDBLogFiles",
+                    "rds:StopDBInstance",
+                    "rds:StartDBInstance",
+                    "rds:DescribeReservedDBInstancesOfferings",
+                    "rds:DescribeReservedDBInstances",
+                    "rds:ListTagsForResource",
+                    "rds:DescribeValidDBInstanceModifications",
+                    "rds:DescribeDBInstances",
+                    "rds:DescribeSourceRegions",
+                    "rds:DescribeDBClusterEndpoints",
+                    "rds:DescribeDBClusters",
+                    "rds:DescribeDBClusterParameterGroups",
+                    "rds:DescribeOptionGroups"
+                  ],
+                  "Resource": "*"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  },
+  "Outputs": {
+    "ServerlessDeploymentBucketName": {
+      "Value": {
+        "Ref": "ServerlessDeploymentBucket"
+      },
+      "Export": {
+        "Name": "sls-lillup-neptune-dev-ServerlessDeploymentBucketName"
+      }
+    },
+    "StopNeptuneLambdaFunctionQualifiedArn": {
+      "Description": "Current Lambda function version",
+      "Value": {
+        "Ref": "StopNeptuneLambdaVersion8dBhSdXDnHFU1MQxRdoFy1AOT7rusTgBbOpzirJJuQ"
+      },
+      "Export": {
+        "Name": "sls-lillup-neptune-dev-StopNeptuneLambdaFunctionQualifiedArn"
+      }
+    },
+    "SecurityGroup": {
+      "Description": "Security group for the lambda service",
+      "Value": {
+        "Ref": "NeptuneServiceSecurityGroup"
+      }
+    },
+    "DBClusterEndpoint": {
+      "Description": "Master Endpoint for Neptune Cluster",
+      "Value": {
+        "Fn::GetAtt": [
+          "NeptuneDBCluster",
+          "Endpoint"
+        ]
+      }
+    }
+  }
+}
